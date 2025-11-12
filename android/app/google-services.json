@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "742257714445",
+    "project_id": "ongi-1e17f",
+    "storage_bucket": "ongi-1e17f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:742257714445:android:2e30738078292562edfc44",
+        "android_client_info": {
+          "package_name": "com.ambro.ongi"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "742257714445-rbt2jaqgkm9rjjstir3llkff31pcaunj.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDZKOW66v73AcpUTfYHO0N_OEFhavH3kRQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "742257714445-rbt2jaqgkm9rjjstir3llkff31pcaunj.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "742257714445-dt142ra643cj3mdl513fkvk16t6s79t1.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.ambro.ongi"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
+
