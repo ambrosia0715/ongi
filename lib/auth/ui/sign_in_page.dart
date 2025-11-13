@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../data/auth_repository.dart';
 import '../../widgets/app_text_field.dart';
 import '../../widgets/app_button.dart';
+import '../../core/result.dart';
 import '../../core/result_extension.dart';
 
 /// 로그인 페이지
@@ -72,37 +75,75 @@ class _SignInPageState extends ConsumerState<SignInPage> {
   }
 
   Future<void> _handleGoogleSignIn() async {
+    if (_isLoading) return; // 중복 호출 방지
+    
+    print('_handleGoogleSignIn called');
     setState(() => _isLoading = true);
 
     try {
+      print('Reading authRepositoryProvider...');
       final authRepo = ref.read(authRepositoryProvider);
-      final result = await authRepo.signInWithGoogle();
+      print('Calling signInWithGoogle...');
+      
+      // 비동기 작업을 안전하게 처리
+      Result<User> result;
+      try {
+        result = await authRepo.signInWithGoogle().timeout(
+          const Duration(seconds: 60),
+          onTimeout: () {
+            print('Google Sign In timeout in UI');
+            return const Failure('구글 로그인이 시간 초과되었습니다.');
+          },
+        );
+      } catch (error, stackTrace) {
+        print('Caught error in signInWithGoogle: $error');
+        print('Stack trace: $stackTrace');
+        result = Failure('구글 로그인 중 오류가 발생했습니다: $error', error);
+      }
 
-      if (!mounted) return;
+      print('signInWithGoogle completed');
+      
+      if (!mounted) {
+        print('Widget not mounted, returning');
+        return;
+      }
 
       result.when(
         success: (user) {
+          print('Google Sign In success, navigating to dashboard');
           // 로그인 성공 시 대시보드로 이동
-          context.go('/dashboard');
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (mounted) {
+              context.go('/dashboard');
+            }
+          });
         },
         failure: (message, error) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(message),
-              backgroundColor: Colors.red,
-            ),
-          );
+          print('Google Sign In failed: $message, error: $error');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(message),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
         },
       );
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('Google Sign In exception in UI: $e');
+      print('Stack trace: $stackTrace');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('구글 로그인 중 오류가 발생했습니다: $e'),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
         ),
       );
     } finally {
+      print('_handleGoogleSignIn finally block');
       if (mounted) {
         setState(() => _isLoading = false);
       }
@@ -139,13 +180,6 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                // 앱 타이틀
-                Text(
-                  '온기',
-                  style: Theme.of(context).textTheme.displayLarge,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
                 Text(
                   '따뜻한 하루를 기록하세요',
                   style: Theme.of(context).textTheme.bodyLarge,
@@ -207,37 +241,40 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                         )
                       : const Text('로그인'),
                 ),
-                const SizedBox(height: 16),
-                // 구분선
-                Row(
-                  children: [
-                    Expanded(child: Divider(color: Colors.grey.shade300)),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(
-                        '또는',
-                        style: Theme.of(context).textTheme.bodySmall,
+                // Google Sign-In 버튼 (모든 플랫폼에서 표시)
+                ...[
+                  const SizedBox(height: 16),
+                  // 구분선
+                  Row(
+                    children: [
+                      Expanded(child: Divider(color: Colors.grey.shade300)),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Text(
+                          '또는',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
                       ),
+                      Expanded(child: Divider(color: Colors.grey.shade300)),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  // 구글 로그인 버튼
+                  OutlinedButton.icon(
+                    onPressed: _isLoading ? null : _handleGoogleSignIn,
+                    icon: Image.asset(
+                      'assets/images/google_logo.png',
+                      height: 20,
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Icon(Icons.g_mobiledata, size: 20);
+                      },
                     ),
-                    Expanded(child: Divider(color: Colors.grey.shade300)),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                // 구글 로그인 버튼
-                OutlinedButton.icon(
-                  onPressed: _isLoading ? null : _handleGoogleSignIn,
-                  icon: Image.asset(
-                    'assets/images/google_logo.png',
-                    height: 20,
-                    errorBuilder: (context, error, stackTrace) {
-                      return const Icon(Icons.g_mobiledata, size: 20);
-                    },
+                    label: const Text('구글로 로그인'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
                   ),
-                  label: const Text('구글로 로그인'),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                ),
+                ],
                 const SizedBox(height: 16),
                 // 회원가입 링크
                 TextButton(

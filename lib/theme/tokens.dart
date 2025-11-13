@@ -5,7 +5,7 @@ class OngiTokens {
   OngiTokens._();
   
   // 색상 팔레트
-  static const Color bg = Color(0xFFF9F4EE); // 크림톤 배경
+  static const Color bg = Color(0xFFF5F0E8); // 따뜻한 베이지 크림톤 배경 (로고 이미지와 조화)
   static const Color ink = Color(0xFF4C4036); // 브라운 텍스트
   static const Color primary = Color(0xFF8B6F5E);
   static const Color accent = Color(0xFFBFA58F);

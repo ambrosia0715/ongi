@@ -5,6 +5,136 @@ import '../../auth/data/auth_repository.dart';
 import '../../theme/theme.dart';
 import '../../widgets/app_card.dart';
 import '../../core/result_extension.dart';
+import '../../backup/data/backup_providers.dart';
+import '../../diary/data/diary_providers.dart';
+
+/// 백업 처리
+Future<void> _handleBackup(BuildContext context, WidgetRef ref) async {
+  final backupService = ref.read(backupServiceProvider);
+  
+  // 로딩 다이얼로그 표시
+  if (!context.mounted) return;
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => const Center(
+      child: CircularProgressIndicator(),
+    ),
+  );
+
+  try {
+    final result = await backupService.shareBackup(context);
+    
+    if (!context.mounted) return;
+    Navigator.of(context).pop(); // 로딩 다이얼로그 닫기
+    
+    result.when(
+      success: (_) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('백업이 완료되었습니다. 파일이 공유되었습니다.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      },
+      failure: (message, error) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('백업 실패: $message'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      },
+    );
+  } catch (e) {
+    if (!context.mounted) return;
+    Navigator.of(context).pop(); // 로딩 다이얼로그 닫기
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('백업 중 오류가 발생했습니다: $e'),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+}
+
+/// 복원 처리
+Future<void> _handleRestore(BuildContext context, WidgetRef ref) async {
+  // 확인 다이얼로그
+  if (!context.mounted) return;
+  final confirm = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('데이터 복원'),
+      content: const Text(
+        '백업 파일을 복원하면 기존 데이터가 덮어씌워질 수 있습니다.\n정말 복원하시겠습니까?',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('취소'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          style: TextButton.styleFrom(foregroundColor: Colors.red),
+          child: const Text('복원'),
+        ),
+      ],
+    ),
+  );
+
+  if (confirm != true) return;
+
+  final backupService = ref.read(backupServiceProvider);
+  
+  // 로딩 다이얼로그 표시
+  if (!context.mounted) return;
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => const Center(
+      child: CircularProgressIndicator(),
+    ),
+  );
+
+  try {
+    final result = await backupService.importBackup();
+    
+    if (!context.mounted) return;
+    Navigator.of(context).pop(); // 로딩 다이얼로그 닫기
+    
+    result.when(
+      success: (count) {
+        // 일기 목록 새로고침
+        ref.invalidate(diaryEntriesProvider);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('복원이 완료되었습니다. ($count개의 일기가 복원되었습니다)'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      },
+      failure: (message, error) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('복원 실패: $message'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      },
+    );
+  } catch (e) {
+    if (!context.mounted) return;
+    Navigator.of(context).pop(); // 로딩 다이얼로그 닫기
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('복원 중 오류가 발생했습니다: $e'),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+}
 
 /// 설정 페이지
 class SettingsPage extends ConsumerWidget {
@@ -22,132 +152,77 @@ class SettingsPage extends ConsumerWidget {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // 계정 정보
-            AppCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '계정',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 16),
-                  userAsync.when(
-                    data: (user) => Text(
-                      user?.email ?? '로그인되지 않음',
-                      style: Theme.of(context).textTheme.bodyLarge,
+            SizedBox(
+              width: double.infinity,
+              child: AppCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '계정',
+                      style: Theme.of(context).textTheme.titleLarge,
                     ),
-                    loading: () => const CircularProgressIndicator(),
-                    error: (_, __) => const Text('오류'),
-                  ),
-                ],
+                    const SizedBox(height: 16),
+                    userAsync.when(
+                      data: (user) => Text(
+                        user?.email ?? '로그인되지 않음',
+                        style: Theme.of(context).textTheme.bodyLarge,
+                      ),
+                      loading: () => const CircularProgressIndicator(),
+                      error: (_, __) => const Text('오류'),
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 16),
             
             // 테마 설정
-            AppCard(
-              child: Column(
-                children: [
-                  ListTile(
-                    title: const Text('다크 모드'),
-                    trailing: Switch(
-                    value: themeMode == ThemeMode.dark,
-                    onChanged: (value) {
-                      ref.read(themeModeProvider.notifier).setThemeMode(
-                          value ? ThemeMode.dark : ThemeMode.light);
-                    },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            
-            // 알림 설정 (스텁)
-            AppCard(
-              child: Column(
-                children: [
-                  ListTile(
-                    title: const Text('알림 설정'),
-                    subtitle: const Text('일기 작성 알림'),
-                    trailing: Switch(
-                      value: false,
+            SizedBox(
+              width: double.infinity,
+              child: AppCard(
+                child: Column(
+                  children: [
+                    ListTile(
+                      title: const Text('다크 모드'),
+                      trailing: Switch(
+                      value: themeMode == ThemeMode.dark,
                       onChanged: (value) {
-                        // TODO(ongi): 알림 설정 구현
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('알림 기능은 준비 중입니다'),
-                          ),
-                        );
+                        ref.read(themeModeProvider.notifier).setThemeMode(
+                            value ? ThemeMode.dark : ThemeMode.light);
                       },
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 16),
             
-            // 광고 설정
-            AppCard(
-              child: Column(
-                children: [
-                  ListTile(
-                    title: const Text('광고 표시'),
-                    subtitle: const Text('무료 버전에서는 광고가 표시됩니다'),
-                    trailing: Switch(
-                      value: true, // TODO(ongi): Premium 상태에 따라 변경
-                      onChanged: (value) {
-                        // TODO(ongi): Premium 전환 시 광고 제거
-                        if (!value) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Premium 구독 시 광고가 제거됩니다'),
-                            ),
-                          );
-                        }
-                      },
+            // 데이터 관리
+            SizedBox(
+              width: double.infinity,
+              child: AppCard(
+                child: Column(
+                  children: [
+                    ListTile(
+                      title: const Text('데이터 백업'),
+                      subtitle: const Text('일기 데이터를 백업합니다'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => _handleBackup(context, ref),
                     ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            
-            // 데이터 관리 (스텁)
-            AppCard(
-              child: Column(
-                children: [
-                  ListTile(
-                    title: const Text('데이터 백업'),
-                    subtitle: const Text('일기 데이터를 백업합니다'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () {
-                      // TODO(ongi): 데이터 백업 구현
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('백업 기능은 준비 중입니다'),
-                        ),
-                      );
-                    },
-                  ),
-                  const Divider(),
-                  ListTile(
-                    title: const Text('데이터 복원'),
-                    subtitle: const Text('백업한 데이터를 복원합니다'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () {
-                      // TODO(ongi): 데이터 복원 구현
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('복원 기능은 준비 중입니다'),
-                        ),
-                      );
-                    },
-                  ),
-                ],
+                    const Divider(),
+                    ListTile(
+                      title: const Text('데이터 복원'),
+                      subtitle: const Text('백업한 데이터를 복원합니다'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => _handleRestore(context, ref),
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 32),

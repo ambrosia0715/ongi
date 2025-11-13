@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,17 +9,52 @@ import '../../core/result.dart';
 
 /// Auth Repository Provider
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
-  return AuthRepository();
+  try {
+    // Firebase가 초기화되었는지 확인
+    final apps = Firebase.apps;
+    if (apps.isEmpty) {
+      throw Exception('Firebase is not initialized. Please wait for Firebase initialization to complete.');
+    }
+    return AuthRepository();
+  } catch (e) {
+    print('Error creating AuthRepository: $e');
+    rethrow;
+  }
 });
 
 /// 인증 관련 데이터 처리 클래스
 class AuthRepository {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    // Android용 서버 클라이언트 ID (필요한 경우)
-    // serverClientId: '742257714445-rbt2jaqgkm9rjjstir3llkff31pcaunj.apps.googleusercontent.com',
-  );
+  late final FirebaseAuth _auth;
+  late final FirebaseFirestore _firestore;
+  late final GoogleSignIn _googleSignIn;
+  
+  AuthRepository() {
+    try {
+      // Firebase가 초기화되었는지 확인
+      final apps = Firebase.apps;
+      if (apps.isEmpty) {
+        throw Exception('Firebase is not initialized');
+      }
+      
+      _auth = FirebaseAuth.instance;
+      _firestore = FirebaseFirestore.instance;
+      
+      // 웹용 클라이언트 ID 설정
+      _googleSignIn = GoogleSignIn(
+        scopes: ['email', 'profile'],
+        // 웹에서는 클라이언트 ID를 명시적으로 전달
+        // iOS/Android에서는 GoogleService-Info.plist/google-services.json에서 자동으로 읽어옴
+        clientId: kIsWeb 
+            ? '687252199849-7pfpauu6vb51b696e0ie1f4r5dv6818b.apps.googleusercontent.com'
+            : null,
+      );
+      
+      print('AuthRepository initialized successfully');
+    } catch (e) {
+      print('Error initializing AuthRepository: $e');
+      rethrow;
+    }
+  }
   
   /// 현재 사용자 스트림
   Stream<User?> get authStateChanges => _auth.authStateChanges();
@@ -110,8 +148,35 @@ class AuthRepository {
     try {
       print('Starting Google Sign In...');
       
+      // 기존 세션 정리 (이전 로그인 세션이 남아있을 수 있음)
+      try {
+        await _googleSignIn.signOut();
+        print('Previous session signed out');
+      } catch (e) {
+        print('Warning: Failed to sign out previous session: $e');
+        // signOut 실패는 무시하고 계속 진행
+      }
+      
       // 구글 로그인 플로우 시작
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      GoogleSignInAccount? googleUser;
+      try {
+        print('Calling GoogleSignIn.signIn()...');
+        googleUser = await _googleSignIn.signIn().timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            print('Google Sign In timeout');
+            throw TimeoutException('구글 로그인이 시간 초과되었습니다.');
+          },
+        );
+        print('GoogleSignIn.signIn() completed, user: ${googleUser?.email ?? "null"}');
+      } catch (signInError) {
+        print('Error during Google Sign In: $signInError');
+        print('Error type: ${signInError.runtimeType}');
+        if (signInError is TimeoutException) {
+          return Failure('구글 로그인이 시간 초과되었습니다. 다시 시도해주세요.', signInError);
+        }
+        return Failure('구글 로그인 중 오류가 발생했습니다: $signInError', signInError);
+      }
       
       if (googleUser == null) {
         // 사용자가 로그인 취소
@@ -122,7 +187,13 @@ class AuthRepository {
       print('Google user signed in: ${googleUser.email}');
       
       // 구글 인증 정보 가져오기
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      GoogleSignInAuthentication googleAuth;
+      try {
+        googleAuth = await googleUser.authentication;
+      } catch (authError) {
+        print('Error getting Google auth: $authError');
+        return Failure('구글 인증 정보를 가져오는데 실패했습니다: $authError', authError);
+      }
       
       if (googleAuth.accessToken == null || googleAuth.idToken == null) {
         print('Error: Missing Google auth tokens');
@@ -140,7 +211,13 @@ class AuthRepository {
       print('Firebase credential created, signing in...');
       
       // Firebase에 로그인
-      final userCredential = await _auth.signInWithCredential(credential);
+      UserCredential userCredential;
+      try {
+        userCredential = await _auth.signInWithCredential(credential);
+      } catch (firebaseError) {
+        print('Error signing in with Firebase: $firebaseError');
+        return Failure('Firebase 로그인에 실패했습니다: $firebaseError', firebaseError);
+      }
       
       final user = userCredential.user;
       if (user == null) {
@@ -151,24 +228,29 @@ class AuthRepository {
       print('Firebase user signed in: ${user.uid}');
       
       // Firestore에 사용자 프로필이 없으면 생성
-      final userDoc = await _firestore.collection('users').doc(user.uid).get();
-      if (!userDoc.exists) {
-        try {
-          await _firestore.collection('users').doc(user.uid).set({
-            'email': user.email ?? '',
-            'displayName': user.displayName ?? '',
-            'photoURL': user.photoURL ?? '',
-            'createdAt': FieldValue.serverTimestamp(),
-            'isPremium': false,
-            'aiUsageCount': 0,
-            'lastAiUsageDate': null,
-          });
-          print('User profile created in Firestore');
-        } catch (firestoreError) {
-          print('Warning: Failed to create user profile in Firestore: $firestoreError');
+      try {
+        final userDoc = await _firestore.collection('users').doc(user.uid).get();
+        if (!userDoc.exists) {
+          try {
+            await _firestore.collection('users').doc(user.uid).set({
+              'email': user.email ?? '',
+              'displayName': user.displayName ?? '',
+              'photoURL': user.photoURL ?? '',
+              'createdAt': FieldValue.serverTimestamp(),
+              'isPremium': false,
+              'aiUsageCount': 0,
+              'lastAiUsageDate': null,
+            });
+            print('User profile created in Firestore');
+          } catch (firestoreError) {
+            print('Warning: Failed to create user profile in Firestore: $firestoreError');
+          }
+        } else {
+          print('User profile already exists in Firestore');
         }
-      } else {
-        print('User profile already exists in Firestore');
+      } catch (firestoreError) {
+        print('Warning: Firestore operation failed: $firestoreError');
+        // Firestore 오류는 무시하고 로그인은 성공으로 처리
       }
       
       return Success(user);

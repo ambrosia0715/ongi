@@ -72,6 +72,71 @@ class AiRepository {
       return Failure('AI 코멘트를 생성하는데 실패했습니다.', e);
     }
   }
+
+  /// 마음 한 줄 기반 AI 코멘트 생성
+  Future<Result<String>> generateNoteComment(String note) async {
+    String apiKey;
+    try {
+      apiKey = Env.openAiApiKey;
+    } catch (e) {
+      print('Error getting OpenAI API key: $e');
+      return const Failure('OpenAI API 키를 읽는 중 오류가 발생했습니다. .env 파일을 확인해주세요.');
+    }
+    
+    if (apiKey.isEmpty || apiKey == 'your_openai_api_key_here') {
+      return const Failure('OpenAI API 키가 설정되지 않았습니다. 프로젝트 루트에 .env 파일을 생성하고 OPENAI_API_KEY를 설정해주세요.');
+    }
+
+    try {
+      // 프롬프트 생성
+      final prompt = PromptTemplates.buildNoteCommentPrompt(note);
+
+      // OpenAI API 호출
+      final response = await http.post(
+        Uri.parse(_baseUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $apiKey',
+        },
+        body: jsonEncode({
+          'model': 'gpt-3.5-turbo',
+          'messages': [
+            {
+              'role': 'system',
+              'content': '당신은 따뜻하고 공감적인 일기 코멘터입니다.',
+            },
+            {
+              'role': 'user',
+              'content': prompt,
+            },
+          ],
+          'temperature': 0.7,
+          'max_tokens': 300,
+        }),
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw Exception('요청 시간이 초과되었습니다.');
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final content = data['choices']?[0]?['message']?['content'] as String?;
+        if (content != null && content.isNotEmpty) {
+          return Success(content.trim());
+        }
+        return const Failure('AI 응답이 비어있습니다.');
+      } else {
+        final errorData = jsonDecode(response.body) as Map<String, dynamic>?;
+        final errorMessage =
+            errorData?['error']?['message'] as String? ?? '알 수 없는 오류';
+        return Failure('AI 코멘트 생성 실패: $errorMessage');
+      }
+    } catch (e) {
+      return Failure('AI 코멘트를 생성하는데 실패했습니다.', e);
+    }
+  }
 }
 
 /// 일일 AI 사용 제한 상태

@@ -4,7 +4,20 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 class Env {
   /// OpenAI API 키
   /// .env 파일에서 OPENAI_API_KEY를 설정하세요
-  static String get openAiApiKey => dotenv.env['OPENAI_API_KEY'] ?? '';
+  static String get openAiApiKey {
+    try {
+      final key = dotenv.env['OPENAI_API_KEY'] ?? '';
+      if (key.isEmpty) {
+        print('⚠️ [Env.openAiApiKey] OPENAI_API_KEY가 비어있습니다.');
+      } else {
+        print('✅ [Env.openAiApiKey] API 키를 성공적으로 읽었습니다. (길이: ${key.length})');
+      }
+      return key;
+    } catch (e) {
+      print('❌ [Env.openAiApiKey] Error reading OPENAI_API_KEY from .env: $e');
+      return '';
+    }
+  }
   
   /// AdMob Android App ID
   /// .env 파일에서 ADMOB_APP_ID_ANDROID를 설정하세요

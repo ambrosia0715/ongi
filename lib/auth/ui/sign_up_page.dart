@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -85,6 +86,8 @@ class _SignUpPageState extends ConsumerState<SignUpPage> {
   }
 
   Future<void> _handleGoogleSignIn() async {
+    if (_isLoading) return; // 중복 호출 방지
+    
     setState(() => _isLoading = true);
 
     try {
@@ -96,23 +99,34 @@ class _SignUpPageState extends ConsumerState<SignUpPage> {
       result.when(
         success: (user) {
           // 로그인 성공 시 대시보드로 이동
-          context.go('/dashboard');
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              context.go('/dashboard');
+            }
+          });
         },
         failure: (message, error) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(message),
-              backgroundColor: Colors.red,
-            ),
-          );
+          print('Google Sign In failed: $message, error: $error');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(message),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
         },
       );
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('Google Sign In exception: $e');
+      print('Stack trace: $stackTrace');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('구글 로그인 중 오류가 발생했습니다: $e'),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
         ),
       );
     } finally {
@@ -236,37 +250,40 @@ class _SignUpPageState extends ConsumerState<SignUpPage> {
                         )
                       : const Text('회원가입'),
                 ),
-                const SizedBox(height: 16),
-                // 구분선
-                Row(
-                  children: [
-                    Expanded(child: Divider(color: Colors.grey.shade300)),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(
-                        '또는',
-                        style: Theme.of(context).textTheme.bodySmall,
+                // Google Sign-In 버튼 (모든 플랫폼에서 표시)
+                ...[
+                  const SizedBox(height: 16),
+                  // 구분선
+                  Row(
+                    children: [
+                      Expanded(child: Divider(color: Colors.grey.shade300)),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Text(
+                          '또는',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
                       ),
+                      Expanded(child: Divider(color: Colors.grey.shade300)),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  // 구글 로그인 버튼
+                  OutlinedButton.icon(
+                    onPressed: _isLoading ? null : _handleGoogleSignIn,
+                    icon: Image.asset(
+                      'assets/images/google_logo.png',
+                      height: 20,
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Icon(Icons.g_mobiledata, size: 20);
+                      },
                     ),
-                    Expanded(child: Divider(color: Colors.grey.shade300)),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                // 구글 로그인 버튼
-                OutlinedButton.icon(
-                  onPressed: _isLoading ? null : _handleGoogleSignIn,
-                  icon: Image.asset(
-                    'assets/images/google_logo.png',
-                    height: 20,
-                    errorBuilder: (context, error, stackTrace) {
-                      return const Icon(Icons.g_mobiledata, size: 20);
-                    },
+                    label: const Text('구글로 시작하기'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
                   ),
-                  label: const Text('구글로 시작하기'),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                ),
+                ],
                 const SizedBox(height: 16),
                 // 로그인 링크
                 TextButton(

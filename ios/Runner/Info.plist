@@ -71,6 +71,31 @@
 		<string>NotoSansKR-Medium.otf</string>
 		<string>NotoSansKR-Bold.otf</string>
 	</array>
+	<!-- Google Sign In Client ID -->
+	<key>GIDClientID</key>
+	<string>742257714445-dt142ra643cj3mdl513fkvk16t6s79t1.apps.googleusercontent.com</string>
+	<!-- 파일 공유 지원 (백업 파일 복원용) -->
+	<key>UISupportsDocumentBrowser</key>
+	<true/>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+	<!-- JSON 파일 타입 지원 -->
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>JSON File</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.json</string>
+				<string>public.text</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>
 

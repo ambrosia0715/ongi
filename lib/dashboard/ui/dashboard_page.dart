@@ -7,31 +7,36 @@ import '../../widgets/app_card.dart';
 import '../../widgets/ad_banner_widget.dart';
 
 /// 대시보드 페이지
-class DashboardPage extends ConsumerWidget {
+class DashboardPage extends ConsumerStatefulWidget {
   const DashboardPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DashboardPage> createState() => _DashboardPageState();
+}
+
+class _DashboardPageState extends ConsumerState<DashboardPage> {
+  @override
+  void initState() {
+    super.initState();
+    // 페이지 진입 시 provider 새로고침
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        print('[Dashboard] 페이지 진입 - provider 새로고침');
+        ref.invalidate(diaryEntriesProvider); // provider 무효화하여 새로 로드
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final userAsync = ref.watch(currentUserProvider);
     final entriesAsync = ref.watch(diaryEntriesProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Image.asset(
-              'assets/images/ongi_logo.png',
-              height: 32,
-              width: 32,
-              errorBuilder: (context, error, stackTrace) {
-                return const Icon(Icons.favorite, size: 24);
-              },
-            ),
-            const SizedBox(width: 8),
-            const Text('온기'),
-          ],
-        ),
+        title: const Text(''), // 빈 제목으로 AppBar 유지
+        centerTitle: true,
+        toolbarHeight: 56, // 기본 AppBar 높이
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
@@ -57,21 +62,40 @@ class DashboardPage extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // 앱 로고 (로그인 페이지와 동일한 크기)
+                      Center(
+                        child: Image.asset(
+                          'assets/images/ongi_logo.png',
+                          height: 120,
+                          width: 120,
+                          errorBuilder: (context, error, stackTrace) {
+                            return const Icon(
+                              Icons.favorite,
+                              size: 80,
+                              color: Color(0xFF8B6F5E),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 24),
                       // 환영 메시지
-                      AppCard(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '안녕하세요, ${user.email?.split('@')[0] ?? '사용자'}님',
-                              style: Theme.of(context).textTheme.headlineMedium,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              '오늘도 따뜻한 하루를 기록해보세요',
-                              style: Theme.of(context).textTheme.bodyLarge,
-                            ),
-                          ],
+                      SizedBox(
+                        width: double.infinity,
+                        child: AppCard(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '안녕하세요, ${user.email?.split('@')[0] ?? '사용자'}님',
+                                style: Theme.of(context).textTheme.headlineMedium,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                '오늘도 따뜻한 하루를 기록해보세요',
+                                style: Theme.of(context).textTheme.bodyLarge,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                       const SizedBox(height: 24),
@@ -94,30 +118,17 @@ class DashboardPage extends ConsumerWidget {
                       entriesAsync.when(
                         data: (entries) {
                           if (entries.isEmpty) {
-                            return AppCard(
-                              child: Column(
-                                children: [
-                                  Icon(
-                                    Icons.book_outlined,
-                                    size: 48,
-                                    color: Colors.grey.shade400,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    '아직 작성한 일기가 없습니다',
-                                    style: Theme.of(context).textTheme.bodyLarge,
-                                  ),
-                                ],
-                              ),
-                            );
+                            return const SizedBox.shrink(); // 일기가 없으면 통계 영역 숨김
                           }
 
                           // 감정 통계
                           final emotionCounts = <String, int>{};
                           for (var entry in entries) {
+                            print('[Dashboard] 일기 감정: date=${entry.date}, emotion=${entry.emotion}');
                             emotionCounts[entry.emotion] =
                                 (emotionCounts[entry.emotion] ?? 0) + 1;
                           }
+                          print('[Dashboard] 감정 통계: $emotionCounts');
 
                           return Column(
                             children: [
@@ -166,10 +177,24 @@ class DashboardPage extends ConsumerWidget {
                                       style: Theme.of(context).textTheme.titleLarge,
                                     ),
                                     const SizedBox(height: 16),
-                                    ...emotionCounts.entries.map((entry) {
+                                    // 감정을 정렬하여 표시 (감정 이름 순)
+                                    ...() {
+                                      final sortedEntries = emotionCounts.entries.toList()
+                                        ..sort((a, b) {
+                                          // 감정 순서: warm, calm, neutral, cool
+                                          const order = ['warm', 'calm', 'neutral', 'cool'];
+                                          final aIndex = order.indexOf(a.key);
+                                          final bIndex = order.indexOf(b.key);
+                                          if (aIndex == -1 && bIndex == -1) return a.key.compareTo(b.key);
+                                          if (aIndex == -1) return 1;
+                                          if (bIndex == -1) return -1;
+                                          return aIndex.compareTo(bIndex);
+                                        });
+                                      return sortedEntries.map((entry) {
                                       final total = entries.length;
                                       final percentage =
                                           (entry.value / total * 100).round();
+                                      print('[Dashboard] 감정 분포 표시: ${entry.key}(${_getEmotionLabel(entry.key)}) = ${entry.value}/${total} (${percentage}%)');
                                       return Padding(
                                         padding: const EdgeInsets.only(bottom: 12),
                                         child: Column(
@@ -202,22 +227,20 @@ class DashboardPage extends ConsumerWidget {
                                           ],
                                         ),
                                       );
-                                    }),
+                                    }).toList();
+                                    }(),
                                   ],
                                 ),
                               ),
                             ],
                           );
                         },
-                        loading: () => const Center(
-                          child: CircularProgressIndicator(),
-                        ),
-                        error: (error, stack) => AppCard(
-                          child: Text(
-                            '통계를 불러오는데 실패했습니다',
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                        ),
+                        loading: () => const SizedBox.shrink(), // 로딩 중일 때는 아무것도 표시하지 않음
+                        error: (error, stack) {
+                          // 에러 발생 시에도 통계 영역 숨김 (일기 목록 버튼은 계속 표시)
+                          print('Error loading entries: $error');
+                          return const SizedBox.shrink();
+                        },
                       ),
                       const SizedBox(height: 24),
                       
